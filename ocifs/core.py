@@ -7,16 +7,18 @@ import os
 from ast import literal_eval
 import inspect
 import logging
+import pathlib
 from typing import Union  # pragma: no cover
 
 from fsspec import AbstractFileSystem
 from fsspec.utils import tokenize, stringify_path
 from fsspec.spec import AbstractBufferedFile
 
-from oci.signer import AbstractBaseSigner
+from oci.signer import AbstractBaseSigner, load_private_key_from_file
 from oci.auth.signers import (
     get_resource_principals_signer,
     InstancePrincipalsSecurityTokenSigner,
+    SecurityTokenSigner,
 )
 from oci.config import DEFAULT_PROFILE, from_file, DEFAULT_LOCATION
 from oci.exceptions import ServiceError, ConfigFileNotFound
@@ -48,7 +50,7 @@ def setup_logging(level=0):
 
 
 setup_logging()
-IAM_POLICIES = {"api_key", "resource_principal", "instance_principal", "unknown_signer"}
+IAM_POLICIES = {"api_key", "resource_principal", "instance_principal", "security_token", "unknown_signer"}
 
 
 def _get_valid_oci_detail_methods(func):
@@ -1025,6 +1027,13 @@ class OCIFileSystem(AbstractFileSystem):
     def _set_up_instance_principal(self):
         self.config_kwargs["signer"] = InstancePrincipalsSecurityTokenSigner()
 
+    def _set_up_security_token(self):
+        self._set_up_api_key()
+        token_file = self.config["security_token_file"]
+        token = pathlib.Path(token_file).read_text()
+        private_key = load_private_key_from_file(self.config["key_file"])
+        self.config_kwargs["signer"] = SecurityTokenSigner(token, private_key)
+
     def _set_up_api_key(self):
         if not self.config:
             self.config = os.environ.get("OCIFS_CONFIG_LOCATION", DEFAULT_LOCATION)
@@ -1050,6 +1059,7 @@ class OCIFileSystem(AbstractFileSystem):
         if self._iam_type in {
             "resource_principal",
             "instance_principal",
+            "security_token",
             "unknown_signer",
         }:
             if hasattr(self.config_kwargs["signer"], "refresh_security_token"):
