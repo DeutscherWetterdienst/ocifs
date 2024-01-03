@@ -1307,8 +1307,15 @@ class OCIFileSystem(AbstractFileSystem):
         dict of {path: contents} if there are multiple paths
         or the path has been otherwise expanded
         """
-        bucket, namespace, key = self.split_path(path)
-        path = _build_full_path(bucket=bucket, namespace=namespace, key=key, **kwargs)
+        if isinstance(path, str):
+            bucket, namespace, key = self.split_path(path)
+            path = _build_full_path(bucket=bucket, namespace=namespace, key=key, **kwargs)
+        else:
+            normalized_paths = []
+            for single_path in path:
+                bucket, namespace, key = self.split_path(single_path)
+                normalized_paths.append(_build_full_path(bucket=bucket, namespace=namespace, key=key, **kwargs))
+            path = normalized_paths
         return super().cat(path, recursive, on_error, **kwargs)
 
 
